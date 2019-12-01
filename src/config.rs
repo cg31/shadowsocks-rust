@@ -41,21 +41,19 @@
 //!
 //! These defined server will be used with a load balancing algorithm.
 
-use std::{
-    collections::HashSet,
-    convert::From,
-    default::Default,
-    error,
-    fmt::{self, Debug, Display, Formatter},
-    fs::OpenOptions,
-    io::Read,
-    net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6},
-    option::Option,
-    path::Path,
-    str::FromStr,
-    string::ToString,
-    time::Duration,
-};
+use std::collections::HashSet;
+use std::convert::From;
+use std::default::Default;
+use std::error;
+use std::fmt::{self, Debug, Display, Formatter};
+use std::fs::OpenOptions;
+use std::io::Read;
+use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, SocketAddrV4, SocketAddrV6};
+use std::option::Option;
+use std::path::Path;
+use std::str::FromStr;
+use std::string::ToString;
+use std::time::Duration;
 
 use base64::{decode_config, encode_config, URL_SAFE_NO_PAD};
 use bytes::Bytes;
@@ -67,7 +65,9 @@ use serde_urlencoded;
 use trust_dns_resolver::config::{NameServerConfigGroup, ResolverConfig};
 use url::{self, Url};
 
-use crate::{crypto::cipher::CipherType, plugin::PluginConfig};
+use crate::crypto::cipher::CipherType;
+use crate::plugin::PluginConfig;
+use crate::relay::socks5::Address;
 
 #[derive(Serialize, Deserialize, Debug, Default)]
 struct SSConfig {
@@ -97,8 +97,6 @@ struct SSConfig {
     forbidden_ip: Option<Vec<String>>,
     #[serde(skip_serializing_if = "Option::is_none")]
     dns: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    remote_dns: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     mode: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -540,10 +538,9 @@ impl FromStr for Mode {
 pub struct Config {
     pub server: Vec<ServerConfig>,
     pub local: Option<ClientConfig>,
-    pub forward: Option<SocketAddr>,
+    pub forward: Option<Address>,
     pub forbidden_ip: HashSet<IpAddr>,
     pub dns: Option<String>,
-    pub remote_dns: Option<SocketAddr>,
     pub mode: Mode,
     pub no_delay: bool,
     pub manager_address: Option<ServerAddr>,
@@ -604,7 +601,6 @@ impl Config {
             forward: None,
             forbidden_ip: HashSet::new(),
             dns: None,
-            remote_dns: None,
             mode: Mode::TcpOnly,
             no_delay: false,
             manager_address: None,
@@ -763,20 +759,6 @@ impl Config {
         // DNS
         nconfig.dns = config.dns;
 
-        if let Some(rdns) = config.remote_dns {
-            match rdns.parse::<SocketAddr>() {
-                Ok(r) => nconfig.remote_dns = Some(r),
-                Err(..) => {
-                    let e = Error::new(
-                        ErrorKind::Malformed,
-                        "malformed `remote_dns`, which must be a valid SocketAddr",
-                        None,
-                    );
-                    return Err(e);
-                }
-            }
-        }
-
         // Mode
         if let Some(m) = config.mode {
             match m.parse::<Mode>() {
@@ -844,13 +826,6 @@ impl Config {
                 }
             }
         })
-    }
-
-    pub fn get_remote_dns(&self) -> SocketAddr {
-        match self.remote_dns {
-            None => SocketAddr::from(SocketAddrV4::new(Ipv4Addr::new(8, 8, 8, 8), 53)),
-            Some(ip) => ip,
-        }
     }
 
     /// Check if there are any plugin are enabled with servers
@@ -933,10 +908,6 @@ impl fmt::Display for Config {
 
         if let Some(ref dns) = self.dns {
             jconf.dns = Some(dns.to_string());
-        }
-
-        if let Some(ref remote_dns) = self.remote_dns {
-            jconf.remote_dns = Some(remote_dns.to_string());
         }
 
         write!(f, "{}", json5::to_string(&jconf).unwrap())

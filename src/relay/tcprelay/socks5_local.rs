@@ -77,26 +77,38 @@ async fn handle_socks5_connect<'a>(
     let rhalf = copy(&mut r, &mut svr_w);
     let whalf = copy(&mut svr_r, &mut w);
 
-    debug!("CONNECT relay established {} <-> {}", client_addr, svr_cfg.addr());
+    debug!(
+        "CONNECT relay established {} <-> {} ({})",
+        client_addr,
+        svr_cfg.addr(),
+        addr
+    );
 
     match future::select(rhalf, whalf).await {
-        Either::Left((Ok(..), _)) => trace!("CONNECT relay {} -> {} closed", client_addr, svr_cfg.addr()),
+        Either::Left((Ok(..), _)) => trace!("CONNECT relay {} -> {} ({}) closed", client_addr, svr_cfg.addr(), addr),
         Either::Left((Err(err), _)) => trace!(
-            "CONNECT relay {} -> {} closed with error {:?}",
+            "CONNECT relay {} -> {} ({}) closed with error {:?}",
             client_addr,
             svr_cfg.addr(),
-            err
+            err,
+            addr,
         ),
-        Either::Right((Ok(..), _)) => trace!("CONNECT relay {} <- {} closed", client_addr, svr_cfg.addr()),
+        Either::Right((Ok(..), _)) => trace!("CONNECT relay {} <- {} ({}) closed", client_addr, svr_cfg.addr(), addr),
         Either::Right((Err(err), _)) => trace!(
-            "CONNECT relay {} <- {} closed with error {:?}",
+            "CONNECT relay {} <- {} ({}) closed with error {:?}",
             client_addr,
             svr_cfg.addr(),
-            err
+            err,
+            addr,
         ),
     }
 
-    debug!("CONNECT relay {} <-> {} closing", client_addr, svr_cfg.addr());
+    debug!(
+        "CONNECT relay {} <-> {} ({}) closing",
+        client_addr,
+        svr_cfg.addr(),
+        addr
+    );
 
     Ok(())
 }
